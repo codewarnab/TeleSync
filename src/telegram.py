@@ -79,51 +79,60 @@ class Telegram:
 
 
     def download_file(self, file_query: str):
-        # Download a file
-        print(colored(f'[*] Searching for "{file_query}"...', "blue"))
-        file = self.db.find_file_by_name_or_path_or_id(file_query)
+        try:
+            # Download a file
+            print(colored(f'[*] Searching for "{file_query}"...', "blue"))
+            file = self.db.find_file_by_name_or_path_or_id(file_query)
 
-        if file[0][-2] == "dir":
-            self.download_directory(file_query)
-            return
+            if file[0][-2] == "dir":
+                self.download_directory(file_query)
+                return
 
-        if not file:
-            print(colored(f"[-] File {file_query} not found.", "red"))
-            return
+            if not file:
+                print(colored(f"[-] File {file_query} not found.", "red"))
+                return
 
-        file = file[0]
-        chunks = json.loads(file[4])
-        file_name = file[1]
-        file_path = file[2]
+            file = file[0]
+            chunks = json.loads(file[4])
+            file_name = file[1]
+            file_path = file[2]
 
-        print(colored(f"\n[+] Downloading {len(chunks)} chunk(s).", "magenta"))
+            print(colored(f"\n[+] Downloading {len(chunks)} chunk(s).", "magenta"))
 
-        # Download each chunk
-        with self.client.start() as client:
-            # Loop through each chunk
-            for chunk_num, chunk_path in enumerate(chunks):
-                # Build the caption, to search for the message
-                # that contains the chunk we need.
-                caption = f"{file[0]}:::::{file[2]}:::::{str(chunk_num)}:::::file"
-                messages = client.get_messages("me", search=caption)
+            # Determine download directory based on OS
+            download_dir = os.path.join(os.path.expanduser("~"), "Downloads")
 
-                # Loop through each message
-                for message in messages:
-                    # Check if message contains the chunk we need
-                    if message.message.split(":::::")[0] == file[0]:
-                        # Download the chunk in temp directory
-                        client.download_media(message, file=chunk_path)
+            # Determine the download path
+            download_path = os.path.join(download_dir, file_name)
 
-                        # Read the chunk
-                        with open(chunk_path, "rb") as chunk_file:
-                            chunk = chunk_file.read()
+            # Download each chunk
+            with self.client.start() as client:
+                # Loop through each chunk
+                for chunk_num, chunk_path in enumerate(chunks):
+                    # Build the caption, to search for the message
+                    # that contains the chunk we need.
+                    caption = f"{file[0]}:::::{file[2]}:::::{str(chunk_num)}:::::file"
+                    messages = client.get_messages("me", search=caption)
 
-                            # Append the chunk to the file
-                            with open(file_path, "ab") as file:
-                                file.write(chunk)
+                    # Loop through each message
+                    for message in messages:
+                        # Check if message contains the chunk we need
+                        if message.message.split(":::::")[0] == file[0]:
+                            # Download the chunk in temp directory
+                            client.download_media(message, file=chunk_path)
 
-        print(colored(f"[+] Downloaded file \"{file_name}\" to \"{file_path}\".", "green"))
+                            # Read the chunk
+                            with open(chunk_path, "rb") as chunk_file:
+                                chunk = chunk_file.read()
 
+                                # Append the chunk to the file
+                                with open(download_path, "ab") as file:
+                                    file.write(chunk)
+
+            print(colored(f"[+] Downloaded file \"{file_name}\" to \"{download_path}\".", "green"))
+        except Exception as e:
+            print(colored(f"[-] Error occurred while downloading file: {e}", "red"))
+    
     def remove_file(self, file_query: str):
         # Remove a file
         print(colored(f"[+] Removing file {file_query}...", "green"))
@@ -242,54 +251,62 @@ class Telegram:
 
 
     def download_directory(self, dir_query: str):
-        ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+        try:
+            ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-        # Download a directory
-        files = self.db.find_file_by_name_or_path_or_id("dir")
+            # Download a directory
+            files = self.db.find_file_by_name_or_path_or_id("dir")
 
-        dir_path = os.path.dirname(files[0][2])
+            # Determine download directory based on OS
+            download_dir = os.path.join(os.path.expanduser("~"), "Downloads")
 
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
+            if not os.path.exists(download_dir):
+                os.makedirs(download_dir)
 
-        if not dir:
-            print(colored(f"[-] Directory {dir_query} not found.", "red"))
-            return
+            if not dir:
+                print(colored(f"[-] Directory {dir_query} not found.", "red"))
+                return
 
-        if VERBOSE:
-            print(f"[INFO] Downloading {len(files)} files from {dir_path}.")
-
-        # Loop through each file in the directory, and see if it's part of the directory
-        for file in files:
             if VERBOSE:
-                print(f"[INFO] Downloading {file[1]}, with ID \"{file[0]}\".")
+                dir_path = os.path.dirname(files[0][2])
+                print(f"[INFO] Downloading {len(files)} files from {dir_path}.")
 
-            if dir_query in file[2]:
-                chunks = json.loads(file[4])
-                file_name = file[1]
-                file_path = file[2]
+            # Loop through each file in the directory, and see if it's part of the directory
+            for file in files:
+                if VERBOSE:
+                    print(f"[INFO] Downloading {file[1]}, with ID \"{file[0]}\".")
 
-                print(colored(f"[+] Downloading {len(chunks)} chunk(s) to \"{file_name}\".", "magenta"))
+                if dir_query in file[2]:
+                    chunks = json.loads(file[4])
+                    file_name = file[1]
+                    file_path = file[2]
 
-                # Download each chunk
-                with self.client.start() as client:
-                    for chunk_num, chunk_path in enumerate(chunks):
-                        caption = f"{file[0]}:::::{file[2]}:::::{str(chunk_num)}:::::dir"
-                        messages = client.get_messages("me", search=caption)
+                    # Determine the download path
+                    download_path = os.path.join(download_dir, file_name)
 
-                        for message in messages:
-                            if message.message.split(":::::")[0] == file[0]:
-                                temp_chunk_path = os.path.join(ROOT_DIR, "temp", f"{file_name}.part{chunk_num}")
-                                if VERBOSE:
-                                    print(colored(f"\t[INFO] Downloading chunk {chunk_num} to {temp_chunk_path}.", "yellow"))
-                                client.download_media(message, file=temp_chunk_path)
+                    print(colored(f"[+] Downloading {len(chunks)} chunk(s) to \"{file_name}\".", "magenta"))
 
-                                with open(temp_chunk_path, "rb") as chunk_file:
-                                    chunk = chunk_file.read()
+                    # Download each chunk
+                    with self.client.start() as client:
+                        for chunk_num, chunk_path in enumerate(chunks):
+                            caption = f"{file[0]}:::::{file[2]}:::::{str(chunk_num)}:::::dir"
+                            messages = client.get_messages("me", search=caption)
 
-                                    print(colored(f"\t[INFO] Appending chunk {chunk_num} to {file_path}.", "green"))
-                                    with open(file_path, "ab") as file:
-                                        # Append the chunk to the file
-                                        file.write(chunk)
+                            for message in messages:
+                                if message.message.split(":::::")[0] == file[0]:
+                                    temp_chunk_path = os.path.join(ROOT_DIR, "temp", f"{file_name}.part{chunk_num}")
+                                    if VERBOSE:
+                                        print(colored(f"\t[INFO] Downloading chunk {chunk_num} to {temp_chunk_path}.", "yellow"))
+                                    client.download_media(message, file=temp_chunk_path)
 
-        print(colored(f"[+] Downloaded directory \"{dir_query}\"", "green"))
+                                    with open(temp_chunk_path, "rb") as chunk_file:
+                                        chunk = chunk_file.read()
+
+                                        print(colored(f"\t[INFO] Appending chunk {chunk_num} to {file_path}.", "green"))
+                                        with open(download_path, "ab") as file:
+                                            # Append the chunk to the file
+                                            file.write(chunk)
+
+            print(colored(f"[+] Downloaded directory \"{dir_query}\"", "green"))
+        except Exception as e:
+            print(colored(f"[-] Error occurred while downloading directory: {e}", "red"))
