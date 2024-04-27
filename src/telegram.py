@@ -1,10 +1,10 @@
 import os
 import uuid
-
+import json
 from files import *
 from config import *
 from tqdm import tqdm
-from db import Database
+from db import Database, Database2, DynamicDatabase
 from termcolor import colored
 from prettytable import PrettyTable
 from telethon import TelegramClient, events, sync
@@ -23,19 +23,27 @@ class Telegram:
     def __init__(self):
         self._api_id = get_telegram_api_id()
         self._api_hash = get_telegram_api_hash()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        session_path = os.path.join(script_dir, "anon.session")
         if VERBOSE:
             print(colored("[INFO] Initializing Telegram Client...", "magenta"))
-        self._client = TelegramClient("anon", self.api_id, self.api_hash)
+        self._client = TelegramClient(session=session_path, api_id=self._api_id, api_hash=self._api_hash)
         if VERBOSE:
             print(colored(f"[INFO] Connecting to Telegram via \"{PHONE}\""))
         self._client.start(phone=PHONE)
+
         
-        if not DB_FILE:
-            self._db = Database("files.db")
-        else:
-            if VERBOSE:
-                print(colored(f"[INFO] Using \"{DB_FILE}\" as database location..."))
+        db_type = get_db_type()
+        if db_type == 1:
             self._db = Database(DB_FILE)
+        elif db_type == 2:
+            neon_db_conn_string = get_neon_db()
+            self._db = Database2(neon_db_conn_string)
+        elif db_type == 3:
+            db1 = Database(DB_FILE)
+            neon_db_conn_string = get_neon_db()
+            db2 = Database2(neon_db_conn_string)
+            self._db = DynamicDatabase(db_type, db1, db2)
 
     @property
     def api_id(self):
@@ -56,34 +64,19 @@ class Telegram:
     def list_files(self):
         # List all files
         if VERBOSE:
-            print(colored("[INFO] Fetching files..."))
+            print(colored("[INFO] Fetching files...", "blue"))
         files = self.db.fetch()
         if VERBOSE:
-            print(colored(f"[SUC] Found {len(list(files))} files."))
+            print(colored(f"[SUCCESS] Found {len(list(files))} files.", "green"))
         table = PrettyTable()
-        table.field_names = [
-            "ID 🌟",
-            "File Name 📁",
-            "File Path 📂",
-            "File Size 📌",
-            "Chunks 🔗",
-            "Type 📝",
-            "Uploaded 📅",
-        ]
+        table.field_names = ["ID", "File Name", "File Path", "File Size", "Chunks", "Type", "Uploaded"]
         for file in files:
             table.add_row(
-                [
-                    file[0],
-                    colored(file[1], "magenta"),
-                    colored(file[2], "cyan"),
-                    colored(parse_bytes(file[3]), "blue"),
-                    colored(len(json.loads(file[4])), "green"),
-                    colored(file[5], "yellow"),
-                    colored(file[6], "magenta"),
-                ]
+                [file[0], file[1], file[2], parse_bytes(file[3]), len(json.loads(file[4])), file[5], file[6]]
             )
 
         print(table)
+
 
     def download_file(self, file_query: str):
         # Download a file
